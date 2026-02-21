@@ -1,4 +1,5 @@
 import { registerSW } from "virtual:pwa-register";
+import { isTauri } from "@tauri-apps/api/core";
 import { isCloudConfigured, supabase } from "./supabaseClient";
 
 const STORAGE_KEY = "time-tracker-app-v1";
@@ -14,6 +15,7 @@ let syncTimeout = null;
 let currentUser = null;
 let syncing = false;
 let reminderTimeout = null;
+let tauriNotificationPlugin = undefined;
 
 const els = {
   projectForm: document.getElementById("project-form"),
@@ -293,7 +295,7 @@ function onTimerStart() {
 
   persistAndRender();
   const taskName = state.tasks.find((t) => t.id === taskId)?.name || "Задача";
-  sendNotification("Таймер запущен", taskName);
+  void sendNotification("Таймер запущен", taskName);
   scheduleReminder();
 }
 
@@ -304,7 +306,7 @@ function onTimerPause() {
   persistAndRender();
   clearReminder();
   const taskName = state.tasks.find((t) => t.id === state.activeTimer?.taskId)?.name || "Задача";
-  sendNotification("Таймер на паузе", taskName);
+  void sendNotification("Таймер на паузе", taskName);
 }
 
 function onTimerStop() {
@@ -313,7 +315,7 @@ function onTimerStop() {
   finalizeActiveTimer();
   persistAndRender();
   clearReminder();
-  sendNotification("Таймер остановлен", taskName);
+  void sendNotification("Таймер остановлен", taskName);
 }
 
 function finalizeActiveTimer() {
@@ -816,24 +818,23 @@ function ensureTick() {
   }, 250);
 }
 
-function initNotifications() {
+async function initNotifications() {
   if (!state.settings) state.settings = defaultSettings();
   if (state.activeTimer?.isRunning) {
     scheduleReminder();
   }
-  renderNotificationSettings();
+  await renderNotificationSettings();
 }
 
-function onEnableNotifications() {
-  if (!("Notification" in window)) {
-    els.notifyStatus.textContent = "Браузер не поддерживает уведомления.";
+async function onEnableNotifications() {
+  const permission = await requestNotificationPermission();
+  if (permission === "unsupported") {
+    els.notifyStatus.textContent = "Уведомления не поддерживаются на этом устройстве.";
     return;
   }
-  Notification.requestPermission().then((permission) => {
-    state.settings.notificationsEnabled = permission === "granted";
-    saveState(state);
-    renderNotificationSettings();
-  });
+  state.settings.notificationsEnabled = permission === "granted";
+  saveState(state);
+  await renderNotificationSettings();
 }
 
 function onSaveNotificationSettings() {
@@ -844,15 +845,15 @@ function onSaveNotificationSettings() {
   }
   state.settings.reminderMinutes = minutes;
   saveState(state);
-  renderNotificationSettings();
+  void renderNotificationSettings();
   if (state.activeTimer?.isRunning) {
     scheduleReminder();
   }
 }
 
-function renderNotificationSettings() {
+async function renderNotificationSettings() {
   if (!state.settings) state.settings = defaultSettings();
-  const permission = "Notification" in window ? Notification.permission : "unsupported";
+  const permission = await getNotificationPermission();
   els.notifyReminderMinutes.value = state.settings.reminderMinutes;
   const enabled = state.settings.notificationsEnabled && permission === "granted";
   if (permission === "unsupported") {
@@ -866,11 +867,24 @@ function renderNotificationSettings() {
   }
 }
 
-function sendNotification(title, body) {
-  if (!("Notification" in window)) return;
+async function sendNotification(title, body) {
   if (!state.settings?.notificationsEnabled) return;
-  if (Notification.permission !== "granted") return;
-  new Notification(title, { body, tag: "time-tracker-notify" });
+  const permission = await getNotificationPermission();
+  if (permission !== "granted") return;
+
+  const plugin = await getTauriNotificationPlugin();
+  if (plugin) {
+    await plugin.sendNotification({
+      title,
+      body,
+      ongoing: false,
+    });
+    return;
+  }
+
+  if ("Notification" in window) {
+    new Notification(title, { body, tag: "time-tracker-notify" });
+  }
 }
 
 function clearReminder() {
@@ -892,9 +906,52 @@ function scheduleReminder() {
   reminderTimeout = setTimeout(() => {
     if (!state.activeTimer?.isRunning) return;
     const taskName = state.tasks.find((t) => t.id === state.activeTimer.taskId)?.name || "Задача";
-    sendNotification("Таймер всё ещё работает", `Проверьте задачу: ${taskName}`);
+    void sendNotification("Таймер всё ещё работает", `Проверьте задачу: ${taskName}`);
     scheduleReminder();
   }, delay);
+}
+
+async function getTauriNotificationPlugin() {
+  if (!isTauri()) return null;
+  if (tauriNotificationPlugin !== undefined) return tauriNotificationPlugin;
+  try {
+    tauriNotificationPlugin = await import("@tauri-apps/plugin-notification");
+    return tauriNotificationPlugin;
+  } catch (_error) {
+    tauriNotificationPlugin = null;
+    return null;
+  }
+}
+
+async function getNotificationPermission() {
+  const plugin = await getTauriNotificationPlugin();
+  if (plugin) {
+    try {
+      const granted = await plugin.isPermissionGranted();
+      return granted ? "granted" : "default";
+    } catch (_error) {
+      return "unsupported";
+    }
+  }
+
+  if (!("Notification" in window)) return "unsupported";
+  return Notification.permission;
+}
+
+async function requestNotificationPermission() {
+  const plugin = await getTauriNotificationPlugin();
+  if (plugin) {
+    try {
+      const result = await plugin.requestPermission();
+      if (result === "granted" || result === "denied" || result === "default") return result;
+      return result ? "granted" : "default";
+    } catch (_error) {
+      return "unsupported";
+    }
+  }
+
+  if (!("Notification" in window)) return "unsupported";
+  return Notification.requestPermission();
 }
 
 function getSelectedProject() {
