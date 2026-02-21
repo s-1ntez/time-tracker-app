@@ -13,6 +13,7 @@ let pendingTaskTimeTaskId = null;
 let syncTimeout = null;
 let currentUser = null;
 let syncing = false;
+let reminderTimeout = null;
 
 const els = {
   projectForm: document.getElementById("project-form"),
@@ -64,6 +65,10 @@ const els = {
   authLogout: document.getElementById("auth-logout"),
   cloudSync: document.getElementById("cloud-sync"),
   authStatus: document.getElementById("auth-status"),
+  notifyEnable: document.getElementById("notify-enable"),
+  notifyReminderMinutes: document.getElementById("notify-reminder-minutes"),
+  notifySave: document.getElementById("notify-save"),
+  notifyStatus: document.getElementById("notify-status"),
 };
 
 bindEvents();
@@ -71,6 +76,7 @@ renderAll();
 ensureTick();
 registerSW({ immediate: true });
 initCloud();
+initNotifications();
 
 function bindEvents() {
   window.addEventListener("online", () => {
@@ -103,6 +109,8 @@ function bindEvents() {
   els.authSignup.addEventListener("click", onAuthSignup);
   els.authLogout.addEventListener("click", onAuthLogout);
   els.cloudSync.addEventListener("click", onCloudSync);
+  els.notifyEnable.addEventListener("click", onEnableNotifications);
+  els.notifySave.addEventListener("click", onSaveNotificationSettings);
 }
 
 async function initCloud() {
@@ -284,6 +292,9 @@ function onTimerStart() {
   }
 
   persistAndRender();
+  const taskName = state.tasks.find((t) => t.id === taskId)?.name || "Задача";
+  sendNotification("Таймер запущен", taskName);
+  scheduleReminder();
 }
 
 function onTimerPause() {
@@ -291,12 +302,18 @@ function onTimerPause() {
   state.activeTimer.accumulatedMs += Date.now() - state.activeTimer.lastResumedAt;
   state.activeTimer.isRunning = false;
   persistAndRender();
+  clearReminder();
+  const taskName = state.tasks.find((t) => t.id === state.activeTimer?.taskId)?.name || "Задача";
+  sendNotification("Таймер на паузе", taskName);
 }
 
 function onTimerStop() {
   if (!state.activeTimer) return;
+  const taskName = state.tasks.find((t) => t.id === state.activeTimer.taskId)?.name || "Задача";
   finalizeActiveTimer();
   persistAndRender();
+  clearReminder();
+  sendNotification("Таймер остановлен", taskName);
 }
 
 function finalizeActiveTimer() {
@@ -486,6 +503,7 @@ function serializeStateForCloud() {
     sessions: state.sessions,
     activeTimer: state.activeTimer,
     cloudMeta: state.cloudMeta,
+    settings: state.settings,
   };
 }
 
@@ -496,6 +514,7 @@ function replaceState(next) {
   state.sessions = normalized.sessions;
   state.activeTimer = normalized.activeTimer;
   state.cloudMeta = normalized.cloudMeta;
+  state.settings = normalized.settings;
   selectedProjectId = normalized.projects[0]?.id || null;
 }
 
@@ -505,6 +524,7 @@ function renderAll() {
   renderTasks();
   renderTimer();
   renderStats();
+  renderNotificationSettings();
 }
 
 function renderProjects() {
@@ -796,6 +816,87 @@ function ensureTick() {
   }, 250);
 }
 
+function initNotifications() {
+  if (!state.settings) state.settings = defaultSettings();
+  if (state.activeTimer?.isRunning) {
+    scheduleReminder();
+  }
+  renderNotificationSettings();
+}
+
+function onEnableNotifications() {
+  if (!("Notification" in window)) {
+    els.notifyStatus.textContent = "Браузер не поддерживает уведомления.";
+    return;
+  }
+  Notification.requestPermission().then((permission) => {
+    state.settings.notificationsEnabled = permission === "granted";
+    saveState(state);
+    renderNotificationSettings();
+  });
+}
+
+function onSaveNotificationSettings() {
+  const minutes = Number(els.notifyReminderMinutes.value || 0);
+  if (Number.isNaN(minutes) || minutes < 5 || minutes > 240) {
+    els.notifyStatus.textContent = "Интервал должен быть от 5 до 240 минут.";
+    return;
+  }
+  state.settings.reminderMinutes = minutes;
+  saveState(state);
+  renderNotificationSettings();
+  if (state.activeTimer?.isRunning) {
+    scheduleReminder();
+  }
+}
+
+function renderNotificationSettings() {
+  if (!state.settings) state.settings = defaultSettings();
+  const permission = "Notification" in window ? Notification.permission : "unsupported";
+  els.notifyReminderMinutes.value = state.settings.reminderMinutes;
+  const enabled = state.settings.notificationsEnabled && permission === "granted";
+  if (permission === "unsupported") {
+    els.notifyStatus.textContent = "Уведомления не поддерживаются на этом устройстве.";
+  } else if (permission === "denied") {
+    els.notifyStatus.textContent = "Доступ к уведомлениям запрещён в настройках.";
+  } else if (enabled) {
+    els.notifyStatus.textContent = `Уведомления включены. Напоминание: каждые ${state.settings.reminderMinutes} мин.`;
+  } else {
+    els.notifyStatus.textContent = "Уведомления выключены.";
+  }
+}
+
+function sendNotification(title, body) {
+  if (!("Notification" in window)) return;
+  if (!state.settings?.notificationsEnabled) return;
+  if (Notification.permission !== "granted") return;
+  new Notification(title, { body, tag: "time-tracker-notify" });
+}
+
+function clearReminder() {
+  if (reminderTimeout) {
+    clearTimeout(reminderTimeout);
+    reminderTimeout = null;
+  }
+}
+
+function scheduleReminder() {
+  clearReminder();
+  if (!state.activeTimer?.isRunning) return;
+  const minutes = Number(state.settings?.reminderMinutes || 30);
+  const intervalMs = minutes * 60 * 1000;
+  const elapsed =
+    state.activeTimer.accumulatedMs + (Date.now() - state.activeTimer.lastResumedAt);
+  const delay = Math.max(1000, intervalMs - (elapsed % intervalMs));
+
+  reminderTimeout = setTimeout(() => {
+    if (!state.activeTimer?.isRunning) return;
+    const taskName = state.tasks.find((t) => t.id === state.activeTimer.taskId)?.name || "Задача";
+    sendNotification("Таймер всё ещё работает", `Проверьте задачу: ${taskName}`);
+    scheduleReminder();
+  }, delay);
+}
+
 function getSelectedProject() {
   return state.projects.find((p) => p.id === selectedProjectId) || null;
 }
@@ -880,6 +981,14 @@ function emptyState() {
     cloudMeta: {
       updatedAt: 0,
     },
+    settings: defaultSettings(),
+  };
+}
+
+function defaultSettings() {
+  return {
+    notificationsEnabled: false,
+    reminderMinutes: 30,
   };
 }
 
@@ -960,6 +1069,13 @@ function normalizeState(input) {
     input.cloudMeta && typeof input.cloudMeta === "object" ? input.cloudMeta : {};
   base.cloudMeta = {
     updatedAt: Math.max(0, Number(cloudMeta.updatedAt) || 0),
+  };
+
+  const settings =
+    input.settings && typeof input.settings === "object" ? input.settings : {};
+  base.settings = {
+    notificationsEnabled: Boolean(settings.notificationsEnabled),
+    reminderMinutes: Math.min(240, Math.max(5, Number(settings.reminderMinutes) || 30)),
   };
 
   return base;
