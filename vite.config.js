@@ -1,8 +1,10 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+const basePath = process.env.VITE_BASE_PATH || "./";
+
 export default defineConfig({
-  base: "/time-tracker-app/",
+  base: basePath,
   plugins: [
     VitePWA({
       registerType: "autoUpdate",
@@ -16,8 +18,8 @@ export default defineConfig({
         background_color: "#f8f7f3",
         display: "standalone",
         orientation: "portrait",
-        scope: "/time-tracker-app/",
-        start_url: "/time-tracker-app/",
+        scope: basePath,
+        start_url: basePath,
         lang: "ru",
         icons: [
           {
