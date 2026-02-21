@@ -25,6 +25,23 @@
   </header>
 
   <main class="layout">
+    <section class="panel auth-panel">
+      <div class="panel-head">
+        <h2>Облако и синхронизация</h2>
+      </div>
+      <form id="auth-form" class="inline-form">
+        <input id="auth-email" type="email" placeholder="Email" autocomplete="username">
+        <input id="auth-password" type="password" placeholder="Пароль" autocomplete="current-password">
+        <button id="auth-login" type="button">Войти</button>
+        <button id="auth-signup" type="button" class="ghost">Регистрация</button>
+      </form>
+      <div class="row">
+        <button id="cloud-sync" type="button" class="ghost">Синхронизировать</button>
+        <button id="auth-logout" type="button" class="danger">Выйти</button>
+      </div>
+      <p id="auth-status" class="hint">Облако не подключено.</p>
+    </section>
+
     <section class="panel projects-panel">
       <div class="panel-head">
         <h2>Проекты</h2>

@@ -90,6 +90,7 @@ body {
 .manual-panel { grid-column: span 4; }
 .stats-panel { grid-column: span 8; }
 .export-panel { grid-column: span 4; }
+.auth-panel { grid-column: span 12; }
 
 .panel-head h2 {
   margin: 0 0 10px;

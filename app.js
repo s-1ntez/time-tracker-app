@@ -1,6 +1,8 @@
 import { registerSW } from "virtual:pwa-register";
+import { isCloudConfigured, supabase } from "./supabaseClient";
 
 const STORAGE_KEY = "time-tracker-app-v1";
+const CLOUD_TABLE = "user_state";
 
 const state = loadState();
 let uiTick = null;
@@ -8,6 +10,9 @@ let selectedProjectId = state.projects[0]?.id || null;
 let pendingRenameSave = null;
 let pendingConfirmAction = null;
 let pendingTaskTimeTaskId = null;
+let syncTimeout = null;
+let currentUser = null;
+let syncing = false;
 
 const els = {
   projectForm: document.getElementById("project-form"),
@@ -52,14 +57,25 @@ const els = {
   taskTimeMinutes: document.getElementById("task-time-minutes"),
   taskTimeNote: document.getElementById("task-time-note"),
   taskTimeCancel: document.getElementById("task-time-cancel"),
+  authEmail: document.getElementById("auth-email"),
+  authPassword: document.getElementById("auth-password"),
+  authLogin: document.getElementById("auth-login"),
+  authSignup: document.getElementById("auth-signup"),
+  authLogout: document.getElementById("auth-logout"),
+  cloudSync: document.getElementById("cloud-sync"),
+  authStatus: document.getElementById("auth-status"),
 };
 
 bindEvents();
 renderAll();
 ensureTick();
 registerSW({ immediate: true });
+initCloud();
 
 function bindEvents() {
+  window.addEventListener("online", () => {
+    if (currentUser) scheduleCloudPush(50);
+  });
   els.projectForm.addEventListener("submit", onAddProject);
   els.taskForm.addEventListener("submit", onAddTask);
   els.timerStart.addEventListener("click", onTimerStart);
@@ -83,6 +99,115 @@ function bindEvents() {
   els.taskTimeDialog.addEventListener("close", () => {
     pendingTaskTimeTaskId = null;
   });
+  els.authLogin.addEventListener("click", onAuthLogin);
+  els.authSignup.addEventListener("click", onAuthSignup);
+  els.authLogout.addEventListener("click", onAuthLogout);
+  els.cloudSync.addEventListener("click", onCloudSync);
+}
+
+async function initCloud() {
+  if (!isCloudConfigured || !supabase) {
+    setAuthStatus("Облако не подключено. Добавьте ключи Supabase.");
+    updateCloudControls();
+    return;
+  }
+
+  setAuthStatus("Проверка сессии...");
+  updateCloudControls();
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    setAuthStatus(`Ошибка сессии: ${error.message}`, true);
+    updateCloudControls();
+    return;
+  }
+
+  currentUser = data.session?.user || null;
+  updateCloudControls();
+
+  if (currentUser) {
+    await syncFromCloud();
+    setAuthStatus(`Выполнен вход: ${currentUser.email || currentUser.id}`);
+  } else {
+    setAuthStatus("Войдите, чтобы включить синхронизацию.");
+  }
+
+  supabase.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    updateCloudControls();
+    if (currentUser) {
+      await syncFromCloud();
+      setAuthStatus(`Выполнен вход: ${currentUser.email || currentUser.id}`);
+    } else {
+      setAuthStatus("Вы вышли из аккаунта. Данные сохранены локально.");
+    }
+  });
+}
+
+async function onAuthLogin() {
+  if (!isCloudConfigured || !supabase) return;
+  const email = els.authEmail.value.trim();
+  const password = els.authPassword.value;
+  if (!email || !password) {
+    setAuthStatus("Введите email и пароль.", true);
+    return;
+  }
+  setAuthStatus("Вход...");
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    setAuthStatus(`Ошибка входа: ${error.message}`, true);
+  }
+}
+
+async function onAuthSignup() {
+  if (!isCloudConfigured || !supabase) return;
+  const email = els.authEmail.value.trim();
+  const password = els.authPassword.value;
+  if (!email || !password) {
+    setAuthStatus("Введите email и пароль.", true);
+    return;
+  }
+  setAuthStatus("Регистрация...");
+  const { error } = await supabase.auth.signUp({ email, password });
+  if (error) {
+    setAuthStatus(`Ошибка регистрации: ${error.message}`, true);
+    return;
+  }
+  setAuthStatus("Аккаунт создан. Проверьте email (если включено подтверждение).");
+}
+
+async function onAuthLogout() {
+  if (!isCloudConfigured || !supabase) return;
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    setAuthStatus(`Ошибка выхода: ${error.message}`, true);
+  }
+}
+
+async function onCloudSync() {
+  if (!currentUser) {
+    setAuthStatus("Сначала войдите в аккаунт.", true);
+    return;
+  }
+  await syncFromCloud();
+  await syncToCloud();
+}
+
+function updateCloudControls() {
+  const cloudReady = isCloudConfigured && Boolean(supabase);
+  const authed = Boolean(currentUser);
+
+  els.authEmail.disabled = !cloudReady || authed;
+  els.authPassword.disabled = !cloudReady || authed;
+  els.authLogin.disabled = !cloudReady || authed;
+  els.authSignup.disabled = !cloudReady || authed;
+  els.authLogout.disabled = !cloudReady || !authed;
+  els.cloudSync.disabled = !cloudReady || !authed || syncing;
+}
+
+function setAuthStatus(message, isError = false) {
+  els.authStatus.textContent = message;
+  els.authStatus.style.color = isError ? "#b00020" : "";
 }
 
 function onAddProject(event) {
@@ -267,8 +392,111 @@ function onImport(event) {
 }
 
 function persistAndRender() {
+  state.cloudMeta.updatedAt = Date.now();
   saveState(state);
   renderAll();
+  scheduleCloudPush();
+}
+
+function scheduleCloudPush(delayMs = 900) {
+  if (!currentUser || syncing) return;
+  clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(() => {
+    syncToCloud();
+  }, delayMs);
+}
+
+async function syncFromCloud() {
+  if (!currentUser || !supabase) return;
+
+  setAuthStatus("Скачиваю данные из облака...");
+  syncing = true;
+  updateCloudControls();
+
+  const { data, error } = await supabase
+    .from(CLOUD_TABLE)
+    .select("payload, updated_at")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  syncing = false;
+  updateCloudControls();
+
+  if (error) {
+    setAuthStatus(`Ошибка чтения облака: ${error.message}`, true);
+    return;
+  }
+  if (!data?.payload) {
+    setAuthStatus("Облако пустое. Загружу локальные данные.");
+    await syncToCloud();
+    return;
+  }
+
+  const remote = normalizeState(data.payload);
+  const remoteUpdatedAt = Number(new Date(data.updated_at)) || 0;
+  const localUpdatedAt = Number(state.cloudMeta?.updatedAt || 0);
+
+  if (remoteUpdatedAt >= localUpdatedAt) {
+    replaceState(remote);
+    state.cloudMeta.updatedAt = remoteUpdatedAt;
+    saveState(state);
+    renderAll();
+    setAuthStatus("Данные синхронизированы из облака.");
+  } else {
+    await syncToCloud();
+  }
+}
+
+async function syncToCloud() {
+  if (!currentUser || !supabase) return;
+
+  syncing = true;
+  updateCloudControls();
+  setAuthStatus("Отправляю данные в облако...");
+
+  const updatedAt = Date.now();
+  state.cloudMeta.updatedAt = updatedAt;
+  const payload = serializeStateForCloud();
+
+  const { error } = await supabase.from(CLOUD_TABLE).upsert(
+    {
+      user_id: currentUser.id,
+      payload,
+      updated_at: new Date(updatedAt).toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+
+  syncing = false;
+  updateCloudControls();
+
+  if (error) {
+    setAuthStatus(`Ошибка записи в облако: ${error.message}`, true);
+    return;
+  }
+
+  saveState(state);
+  setAuthStatus("Синхронизация выполнена.");
+}
+
+function serializeStateForCloud() {
+  return {
+    projects: state.projects,
+    tasks: state.tasks,
+    sessions: state.sessions,
+    activeTimer: state.activeTimer,
+    cloudMeta: state.cloudMeta,
+  };
+}
+
+function replaceState(next) {
+  const normalized = normalizeState(next);
+  state.projects = normalized.projects;
+  state.tasks = normalized.tasks;
+  state.sessions = normalized.sessions;
+  state.activeTimer = normalized.activeTimer;
+  state.cloudMeta = normalized.cloudMeta;
+  selectedProjectId = normalized.projects[0]?.id || null;
 }
 
 function renderAll() {
@@ -649,6 +877,9 @@ function emptyState() {
     tasks: [],
     sessions: [],
     activeTimer: null,
+    cloudMeta: {
+      updatedAt: 0,
+    },
   };
 }
 
@@ -724,6 +955,12 @@ function normalizeState(input) {
       isRunning: Boolean(input.activeTimer.isRunning),
     };
   }
+
+  const cloudMeta =
+    input.cloudMeta && typeof input.cloudMeta === "object" ? input.cloudMeta : {};
+  base.cloudMeta = {
+    updatedAt: Math.max(0, Number(cloudMeta.updatedAt) || 0),
+  };
 
   return base;
 }
