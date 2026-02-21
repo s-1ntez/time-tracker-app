@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1f6f5f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Time Tracker App</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="bg-shape bg-shape-a" aria-hidden="true"></div>
+  <div class="bg-shape bg-shape-b" aria-hidden="true"></div>
+
+  <header class="app-header">
+    <h1>Time Tracker</h1>
+    <p>Проекты, задачи и учёт времени в одном приложении</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel projects-panel">
+      <div class="panel-head">
+        <h2>Проекты</h2>
+      </div>
+      <form id="project-form" class="inline-form">
+        <input id="project-name" type="text" placeholder="Название проекта" required maxlength="80">
+        <button type="submit">Добавить</button>
+      </form>
+      <ul id="project-list" class="list"></ul>
+    </section>
+
+    <section class="panel tasks-panel">
+      <div class="panel-head">
+        <h2 id="tasks-title">Задачи</h2>
+      </div>
+      <form id="task-form" class="inline-form">
+        <input id="task-name" type="text" placeholder="Новая задача" required maxlength="120">
+        <button type="submit">Добавить</button>
+      </form>
+      <ul id="task-list" class="list"></ul>
+    </section>
+
+    <section class="panel timer-panel">
+      <div class="panel-head">
+        <h2>Таймер</h2>
+      </div>
+      <div class="row">
+        <select id="timer-task-select"></select>
+      </div>
+      <div class="timer-readout" id="timer-readout">00:00:00</div>
+      <div class="row">
+        <button id="timer-start" type="button">Старт</button>
+        <button id="timer-pause" type="button" class="ghost">Пауза</button>
+        <button id="timer-stop" type="button" class="danger">Стоп и сохранить</button>
+      </div>
+    </section>
+
+    <section class="panel manual-panel">
+      <div class="panel-head">
+        <h2>Ручной ввод времени</h2>
+      </div>
+      <form id="manual-form" class="manual-form">
+        <div class="inline-form">
+          <input id="manual-hours" type="number" min="0" max="1000" placeholder="Часы">
+          <input id="manual-minutes" type="number" min="0" max="59" placeholder="Минуты">
+        </div>
+        <input id="manual-note" type="text" placeholder="Комментарий (опционально)" maxlength="200">
+        <button type="submit">Добавить время</button>
+      </form>
+    </section>
+
+    <section class="panel stats-panel">
+      <div class="panel-head">
+        <h2>Статистика</h2>
+      </div>
+      <div class="stats-grid">
+        <article>
+          <p class="label">Сегодня</p>
+          <p id="stats-today" class="value">00:00:00</p>
+        </article>
+        <article>
+          <p class="label">7 дней</p>
+          <p id="stats-week" class="value">00:00:00</p>
+        </article>
+        <article>
+          <p class="label">Всего</p>
+          <p id="stats-total" class="value">00:00:00</p>
+        </article>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Проект</th>
+            <th>Время</th>
+          </tr>
+        </thead>
+        <tbody id="stats-table-body"></tbody>
+      </table>
+    </section>
+
+    <section class="panel export-panel">
+      <div class="panel-head">
+        <h2>Данные</h2>
+      </div>
+      <div class="row">
+        <button id="export-btn" type="button">Экспорт JSON</button>
+        <label class="file-btn">
+          Импорт JSON
+          <input id="import-input" type="file" accept="application/json">
+        </label>
+      </div>
+      <p class="hint">Формат хранит проекты, задачи и историю времени.</p>
+    </section>
+  </main>
+
+  <template id="project-item-template">
+    <li class="item">
+      <button class="item-main select-project" type="button"></button>
+      <div class="item-actions">
+        <button class="ghost rename-project" type="button">Переимен.</button>
+        <button class="danger delete-project" type="button">Удалить</button>
+      </div>
+    </li>
+  </template>
+
+  <template id="task-item-template">
+    <li class="item">
+      <label class="item-main check-wrap">
+        <input class="toggle-task" type="checkbox">
+        <span class="task-name"></span>
+      </label>
+      <span class="task-time"></span>
+      <div class="item-actions">
+        <button class="ghost rename-task" type="button">Переимен.</button>
+        <button class="danger delete-task" type="button">Удалить</button>
+      </div>
+    </li>
+  </template>
+
+  <dialog id="rename-dialog" class="rename-dialog">
+    <form id="rename-form" method="dialog" class="rename-form">
+      <h3 id="rename-title">Переименовать</h3>
+      <input id="rename-input" type="text" maxlength="120" required>
+      <div class="row">
+        <button id="rename-cancel" class="ghost" type="button">Отмена</button>
+        <button type="submit">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="rename-dialog">
+    <form id="confirm-form" method="dialog" class="rename-form">
+      <h3 id="confirm-title">Подтверждение</h3>
+      <p id="confirm-message"></p>
+      <div class="row">
+        <button id="confirm-cancel" class="ghost" type="button">Отмена</button>
+        <button id="confirm-ok" class="danger" type="submit">Удалить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
