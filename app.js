@@ -7,6 +7,7 @@ let uiTick = null;
 let selectedProjectId = state.projects[0]?.id || null;
 let pendingRenameSave = null;
 let pendingConfirmAction = null;
+let pendingTaskTimeTaskId = null;
 
 const els = {
   projectForm: document.getElementById("project-form"),
@@ -44,6 +45,13 @@ const els = {
   confirmMessage: document.getElementById("confirm-message"),
   confirmCancel: document.getElementById("confirm-cancel"),
   confirmOk: document.getElementById("confirm-ok"),
+  taskTimeDialog: document.getElementById("task-time-dialog"),
+  taskTimeForm: document.getElementById("task-time-form"),
+  taskTimeTitle: document.getElementById("task-time-title"),
+  taskTimeHours: document.getElementById("task-time-hours"),
+  taskTimeMinutes: document.getElementById("task-time-minutes"),
+  taskTimeNote: document.getElementById("task-time-note"),
+  taskTimeCancel: document.getElementById("task-time-cancel"),
 };
 
 bindEvents();
@@ -69,6 +77,11 @@ function bindEvents() {
   els.confirmCancel.addEventListener("click", closeConfirmDialog);
   els.confirmDialog.addEventListener("close", () => {
     pendingConfirmAction = null;
+  });
+  els.taskTimeForm.addEventListener("submit", onTaskTimeSubmit);
+  els.taskTimeCancel.addEventListener("click", closeTaskTimeDialog);
+  els.taskTimeDialog.addEventListener("close", () => {
+    pendingTaskTimeTaskId = null;
   });
 }
 
@@ -352,6 +365,7 @@ function renderTasks() {
     const toggle = fragment.querySelector(".toggle-task");
     const name = fragment.querySelector(".task-name");
     const time = fragment.querySelector(".task-time");
+    const addTimeBtn = fragment.querySelector(".add-task-time");
     const renameBtn = fragment.querySelector(".rename-task");
     const deleteBtn = fragment.querySelector(".delete-task");
 
@@ -364,6 +378,10 @@ function renderTasks() {
     name.textContent = task.name;
     name.classList.toggle("done", task.done);
     time.textContent = formatDuration(totals.get(task.id) || 0);
+
+    addTimeBtn.addEventListener("click", () => {
+      openTaskTimeDialog(task);
+    });
 
     renameBtn.addEventListener("click", () => {
       openRenameDialog("Переименовать задачу", task.name, (value) => {
@@ -452,6 +470,58 @@ function onConfirmSubmit(event) {
   if (!pendingConfirmAction) return;
   pendingConfirmAction();
   closeConfirmDialog();
+}
+
+function openTaskTimeDialog(task) {
+  pendingTaskTimeTaskId = task.id;
+  els.taskTimeTitle.textContent = `Добавить время: ${task.name}`;
+  els.taskTimeHours.value = "";
+  els.taskTimeMinutes.value = "";
+  els.taskTimeNote.value = "";
+  els.taskTimeDialog.showModal();
+  els.taskTimeHours.focus();
+}
+
+function closeTaskTimeDialog() {
+  if (els.taskTimeDialog.open) {
+    els.taskTimeDialog.close();
+  }
+}
+
+function onTaskTimeSubmit(event) {
+  event.preventDefault();
+  if (!pendingTaskTimeTaskId) return;
+
+  const task = state.tasks.find((t) => t.id === pendingTaskTimeTaskId);
+  if (!task) return;
+
+  const hours = Number(els.taskTimeHours.value || 0);
+  const minutes = Number(els.taskTimeMinutes.value || 0);
+
+  if (hours < 0 || minutes < 0 || minutes > 59 || Number.isNaN(hours) || Number.isNaN(minutes)) {
+    alert("Введите корректное время.");
+    return;
+  }
+
+  const durationMs = (hours * 60 + minutes) * 60 * 1000;
+  if (!durationMs) {
+    alert("Укажите время больше нуля.");
+    return;
+  }
+
+  state.sessions.push({
+    id: uid("s"),
+    projectId: task.projectId,
+    taskId: task.id,
+    startedAt: Date.now(),
+    endedAt: Date.now(),
+    durationMs,
+    source: "manual",
+    note: els.taskTimeNote.value.trim(),
+  });
+
+  closeTaskTimeDialog();
+  persistAndRender();
 }
 
 function renderStats() {

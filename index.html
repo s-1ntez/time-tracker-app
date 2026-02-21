@@ -136,6 +136,7 @@
       </label>
       <span class="task-time"></span>
       <div class="item-actions">
+        <button class="ghost add-task-time" type="button">+ Время</button>
         <button class="ghost rename-task" type="button">Переимен.</button>
         <button class="danger delete-task" type="button">Удалить</button>
       </div>
@@ -160,6 +161,21 @@
       <div class="row">
         <button id="confirm-cancel" class="ghost" type="button">Отмена</button>
         <button id="confirm-ok" class="danger" type="submit">Удалить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="task-time-dialog" class="rename-dialog">
+    <form id="task-time-form" method="dialog" class="rename-form">
+      <h3 id="task-time-title">Добавить время к задаче</h3>
+      <div class="inline-form">
+        <input id="task-time-hours" type="number" min="0" max="1000" placeholder="Часы">
+        <input id="task-time-minutes" type="number" min="0" max="59" placeholder="Минуты">
+      </div>
+      <input id="task-time-note" type="text" maxlength="200" placeholder="Комментарий (опционально)">
+      <div class="row">
+        <button id="task-time-cancel" class="ghost" type="button">Отмена</button>
+        <button type="submit">Добавить</button>
       </div>
     </form>
   </dialog>
