@@ -30,6 +30,9 @@ jobs:
 
       - name: Build Tauri (Windows)
         run: npm run tauri:build:win
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4

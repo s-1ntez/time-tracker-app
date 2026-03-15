@@ -103,14 +103,28 @@
       <div class="panel-head">
         <h2>Статистика</h2>
       </div>
+      <div class="stats-toolbar">
+        <div class="stats-month-nav">
+          <button id="stats-month-prev" type="button" class="ghost stats-nav-btn" aria-label="Предыдущий месяц">←</button>
+          <label class="stats-month-picker" for="stats-month-input">
+            <span id="stats-month-label">Месяц</span>
+            <input id="stats-month-input" type="month">
+          </label>
+          <button id="stats-month-next" type="button" class="ghost stats-nav-btn" aria-label="Следующий месяц">→</button>
+        </div>
+        <div class="stats-mode-switch" role="tablist" aria-label="Режим статистики">
+          <button id="stats-mode-projects" type="button" class="ghost">Проекты</button>
+          <button id="stats-mode-tasks" type="button" class="ghost">Задачи</button>
+        </div>
+      </div>
       <div class="stats-grid">
         <article>
-          <p class="label">Сегодня</p>
-          <p id="stats-today" class="value">00:00:00</p>
+          <p id="stats-selected-label" class="label">Выбранный месяц</p>
+          <p id="stats-selected" class="value">00:00:00</p>
         </article>
         <article>
-          <p class="label">7 дней</p>
-          <p id="stats-week" class="value">00:00:00</p>
+          <p class="label">Предыдущий месяц</p>
+          <p id="stats-previous" class="value">00:00:00</p>
         </article>
         <article>
           <p class="label">Всего</p>
@@ -118,12 +132,7 @@
         </article>
       </div>
       <table>
-        <thead>
-          <tr>
-            <th>Проект</th>
-            <th>Время</th>
-          </tr>
-        </thead>
+        <thead id="stats-table-head"></thead>
         <tbody id="stats-table-body"></tbody>
       </table>
     </section>

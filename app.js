@@ -34,9 +34,17 @@ const els = {
   manualHours: document.getElementById("manual-hours"),
   manualMinutes: document.getElementById("manual-minutes"),
   manualNote: document.getElementById("manual-note"),
-  statsToday: document.getElementById("stats-today"),
-  statsWeek: document.getElementById("stats-week"),
+  statsMonthPrev: document.getElementById("stats-month-prev"),
+  statsMonthNext: document.getElementById("stats-month-next"),
+  statsMonthInput: document.getElementById("stats-month-input"),
+  statsMonthLabel: document.getElementById("stats-month-label"),
+  statsModeProjects: document.getElementById("stats-mode-projects"),
+  statsModeTasks: document.getElementById("stats-mode-tasks"),
+  statsSelectedLabel: document.getElementById("stats-selected-label"),
+  statsSelected: document.getElementById("stats-selected"),
+  statsPrevious: document.getElementById("stats-previous"),
   statsTotal: document.getElementById("stats-total"),
+  statsTableHead: document.getElementById("stats-table-head"),
   statsTableBody: document.getElementById("stats-table-body"),
   exportBtn: document.getElementById("export-btn"),
   importInput: document.getElementById("import-input"),
@@ -90,6 +98,11 @@ function bindEvents() {
   els.timerPause.addEventListener("click", onTimerPause);
   els.timerStop.addEventListener("click", onTimerStop);
   els.manualForm.addEventListener("submit", onAddManualTime);
+  els.statsMonthPrev.addEventListener("click", () => changeStatsMonth(-1));
+  els.statsMonthNext.addEventListener("click", () => changeStatsMonth(1));
+  els.statsMonthInput.addEventListener("change", onStatsMonthChange);
+  els.statsModeProjects.addEventListener("click", () => setStatsBreakdownMode("projects"));
+  els.statsModeTasks.addEventListener("click", () => setStatsBreakdownMode("tasks"));
   els.exportBtn.addEventListener("click", onExport);
   els.importInput.addEventListener("change", onImport);
   els.renameForm.addEventListener("submit", onRenameSubmit);
@@ -387,6 +400,27 @@ function onExport() {
   URL.revokeObjectURL(url);
 }
 
+function onStatsMonthChange() {
+  const value = els.statsMonthInput.value;
+  if (!isValidMonthKey(value)) return;
+  state.ui.selectedStatsMonth = value;
+  saveState(state);
+  renderStats();
+}
+
+function changeStatsMonth(delta) {
+  state.ui.selectedStatsMonth = shiftMonthKey(state.ui.selectedStatsMonth, delta);
+  saveState(state);
+  renderStats();
+}
+
+function setStatsBreakdownMode(mode) {
+  if (mode !== "projects" && mode !== "tasks") return;
+  state.ui.statsBreakdownMode = mode;
+  saveState(state);
+  renderStats();
+}
+
 function onImport(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -511,12 +545,14 @@ function serializeStateForCloud() {
 
 function replaceState(next) {
   const normalized = normalizeState(next);
+  const localUi = state.ui || defaultUIState();
   state.projects = normalized.projects;
   state.tasks = normalized.tasks;
   state.sessions = normalized.sessions;
   state.activeTimer = normalized.activeTimer;
   state.cloudMeta = normalized.cloudMeta;
   state.settings = normalized.settings;
+  state.ui = localUi;
   selectedProjectId = normalized.projects[0]?.id || null;
 }
 
@@ -775,40 +811,111 @@ function onTaskTimeSubmit(event) {
 }
 
 function renderStats() {
-  const now = Date.now();
-  const dayStart = startOfDay(now);
-  const weekStart = dayStart - 6 * 24 * 60 * 60 * 1000;
+  const selectedMonth = state.ui.selectedStatsMonth;
+  const previousMonth = shiftMonthKey(selectedMonth, -1);
+  const selectedRange = monthRange(selectedMonth);
+  const previousRange = monthRange(previousMonth);
 
+  let selectedTotal = 0;
+  let previousTotal = 0;
   let total = 0;
-  let today = 0;
-  let week = 0;
 
   const projectTotals = new Map();
+  const taskTotals = new Map();
+
   for (const session of state.sessions) {
+    const endedAt = Number(session.endedAt) || 0;
     total += session.durationMs;
-    projectTotals.set(
-      session.projectId,
-      (projectTotals.get(session.projectId) || 0) + session.durationMs,
-    );
-    if (session.endedAt >= dayStart) today += session.durationMs;
-    if (session.endedAt >= weekStart) week += session.durationMs;
+
+    if (endedAt >= selectedRange.start && endedAt < selectedRange.end) {
+      selectedTotal += session.durationMs;
+      projectTotals.set(
+        session.projectId,
+        (projectTotals.get(session.projectId) || 0) + session.durationMs,
+      );
+      taskTotals.set(session.taskId, (taskTotals.get(session.taskId) || 0) + session.durationMs);
+    }
+
+    if (endedAt >= previousRange.start && endedAt < previousRange.end) {
+      previousTotal += session.durationMs;
+    }
   }
 
-  els.statsToday.textContent = formatDuration(today);
-  els.statsWeek.textContent = formatDuration(week);
+  els.statsMonthInput.value = selectedMonth;
+  els.statsMonthLabel.textContent = formatMonthLabel(selectedMonth);
+  els.statsSelectedLabel.textContent = formatMonthLabel(selectedMonth);
+  els.statsSelected.textContent = formatDuration(selectedTotal);
+  els.statsPrevious.textContent = formatDuration(previousTotal);
   els.statsTotal.textContent = formatDuration(total);
+  els.statsModeProjects.classList.toggle("active", state.ui.statsBreakdownMode === "projects");
+  els.statsModeTasks.classList.toggle("active", state.ui.statsBreakdownMode === "tasks");
 
+  renderStatsTable(state.ui.statsBreakdownMode, projectTotals, taskTotals);
+}
+
+function renderStatsTable(mode, projectTotals, taskTotals) {
+  const columns =
+    mode === "tasks"
+      ? ["Задача", "Проект", "Время"]
+      : ["Проект", "Время"];
+
+  els.statsTableHead.innerHTML = `
+    <tr>${columns.map((column) => `<th>${column}</th>`).join("")}</tr>
+  `;
   els.statsTableBody.innerHTML = "";
-  for (const project of state.projects) {
+
+  const rows =
+    mode === "tasks"
+      ? buildTaskStatsRows(taskTotals)
+      : buildProjectStatsRows(projectTotals);
+
+  if (!rows.length) {
     const tr = document.createElement("tr");
-    const nameTd = document.createElement("td");
-    const totalTd = document.createElement("td");
-    nameTd.textContent = project.name;
-    totalTd.textContent = formatDuration(projectTotals.get(project.id) || 0);
-    tr.appendChild(nameTd);
-    tr.appendChild(totalTd);
+    const td = document.createElement("td");
+    td.colSpan = columns.length;
+    td.className = "stats-empty";
+    td.textContent = "За выбранный месяц данных пока нет.";
+    tr.appendChild(td);
+    els.statsTableBody.appendChild(tr);
+    return;
+  }
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    for (const value of row) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.appendChild(td);
+    }
     els.statsTableBody.appendChild(tr);
   }
+}
+
+function buildProjectStatsRows(projectTotals) {
+  return state.projects
+    .map((project) => ({
+      name: project.name,
+      durationMs: projectTotals.get(project.id) || 0,
+    }))
+    .filter((row) => row.durationMs > 0)
+    .sort((a, b) => b.durationMs - a.durationMs || a.name.localeCompare(b.name, "ru"))
+    .map((row) => [row.name, formatDuration(row.durationMs)]);
+}
+
+function buildTaskStatsRows(taskTotals) {
+  const projectsById = new Map(state.projects.map((project) => [project.id, project]));
+  return state.tasks
+    .map((task) => ({
+      taskName: task.name,
+      projectName: projectsById.get(task.projectId)?.name || "Без проекта",
+      durationMs: taskTotals.get(task.id) || 0,
+    }))
+    .filter((row) => row.durationMs > 0)
+    .sort((a, b) => {
+      if (b.durationMs !== a.durationMs) return b.durationMs - a.durationMs;
+      return a.taskName.localeCompare(b.taskName, "ru");
+    })
+    .map((row) => [row.taskName, row.projectName, formatDuration(row.durationMs)]);
 }
 
 function ensureTick() {
@@ -1003,10 +1110,42 @@ function formatDuration(ms) {
   return `${h}:${m}:${s}`;
 }
 
-function startOfDay(ts) {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+function currentMonthKey() {
+  return monthKeyFromTimestamp(Date.now());
+}
+
+function monthKeyFromTimestamp(ts) {
+  const date = new Date(ts);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function isValidMonthKey(value) {
+  return /^\d{4}-\d{2}$/.test(value);
+}
+
+function shiftMonthKey(monthKey, delta) {
+  const [yearRaw, monthRaw] = monthKey.split("-");
+  const date = new Date(Number(yearRaw), Number(monthRaw) - 1 + delta, 1);
+  return monthKeyFromTimestamp(date.getTime());
+}
+
+function monthRange(monthKey) {
+  const [yearRaw, monthRaw] = monthKey.split("-");
+  const start = new Date(Number(yearRaw), Number(monthRaw) - 1, 1).getTime();
+  const end = new Date(Number(yearRaw), Number(monthRaw), 1).getTime();
+  return { start, end };
+}
+
+function formatMonthLabel(monthKey) {
+  const [yearRaw, monthRaw] = monthKey.split("-");
+  const date = new Date(Number(yearRaw), Number(monthRaw) - 1, 1);
+  const label = new Intl.DateTimeFormat("ru-RU", {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function uid(prefix) {
@@ -1039,6 +1178,7 @@ function emptyState() {
       updatedAt: 0,
     },
     settings: defaultSettings(),
+    ui: defaultUIState(),
   };
 }
 
@@ -1046,6 +1186,13 @@ function defaultSettings() {
   return {
     notificationsEnabled: false,
     reminderMinutes: 30,
+  };
+}
+
+function defaultUIState() {
+  return {
+    selectedStatsMonth: currentMonthKey(),
+    statsBreakdownMode: "projects",
   };
 }
 
@@ -1133,6 +1280,15 @@ function normalizeState(input) {
   base.settings = {
     notificationsEnabled: Boolean(settings.notificationsEnabled),
     reminderMinutes: Math.min(240, Math.max(5, Number(settings.reminderMinutes) || 30)),
+  };
+
+  const ui = input.ui && typeof input.ui === "object" ? input.ui : {};
+  const defaultUi = defaultUIState();
+  base.ui = {
+    selectedStatsMonth: isValidMonthKey(ui.selectedStatsMonth)
+      ? ui.selectedStatsMonth
+      : defaultUi.selectedStatsMonth,
+    statsBreakdownMode: ui.statsBreakdownMode === "tasks" ? "tasks" : "projects",
   };
 
   return base;
