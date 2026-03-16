@@ -1,9 +1,10 @@
 {
   "name": "time-tracker-app",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "scripts": {
+    "tauri": "tauri",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
