@@ -42,12 +42,55 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      - name: Normalize updater signing key
+        shell: bash
+        env:
+          RAW_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
+            echo "Missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD" >&2
+            exit 1
+          fi
+
+          if [ -z "$RAW_TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "Missing TAURI_SIGNING_PRIVATE_KEY" >&2
+            exit 1
+          fi
+
+          NORMALIZED_KEY="$RAW_TAURI_SIGNING_PRIVATE_KEY"
+
+          if [[ "$NORMALIZED_KEY" != untrusted\ comment:* ]]; then
+            DECODED_KEY="$(python3 - <<'PY'
+import base64, os, sys
+raw = os.environ["RAW_TAURI_SIGNING_PRIVATE_KEY"].strip()
+try:
+    decoded = base64.b64decode(raw).decode("utf-8")
+except Exception as exc:
+    print(f"Invalid updater private key format: {exc}", file=sys.stderr)
+    sys.exit(1)
+print(decoded, end="")
+PY
+)"
+            NORMALIZED_KEY="$DECODED_KEY"
+          fi
+
+          if [[ "$NORMALIZED_KEY" != untrusted\ comment:* ]]; then
+            echo "Invalid updater private key format" >&2
+            exit 1
+          fi
+
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<EOF"
+            printf '%s\n' "$NORMALIZED_KEY"
+            echo "EOF"
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
       - name: Create GitHub Release and updater artifacts
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
         with:

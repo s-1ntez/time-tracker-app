@@ -19,6 +19,11 @@
 - `TAURI_SIGNING_PRIVATE_KEY`: содержимое `.updater/updater-private.key`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: содержимое `.updater/updater-password.txt`
 
+Примечание:
+
+- `.updater/updater-private.key` в этом проекте хранится в base64-виде
+- release workflow теперь умеет принимать и raw minisign key, и base64-строку
+
 ## Как выпустить обновление
 
 1. Поднять версию в:
@@ -27,12 +32,12 @@
    - `src-tauri/tauri.conf.json`
 2. Закоммитить изменения
 3. Создать тег вида:
-   - `v1.0.3`
+   - `v1.0.6`
 4. Запушить тег:
 
 ```bash
-git tag v1.0.3
-git push origin v1.0.3
+git tag v1.0.6
+git push origin v1.0.6
 ```
 
 После этого workflow `Release Tauri App` соберёт релиз и updater-артефакты.
