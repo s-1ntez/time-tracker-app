@@ -244,7 +244,17 @@ async function getProcessPlugin() {
 }
 
 function getErrorMessage(error) {
-  return error instanceof Error ? error.message : String(error);
+  const rawMessage = error instanceof Error ? error.message : String(error);
+
+  if (rawMessage.includes("Could not fetch a valid release JSON from the remote")) {
+    return "Канал обновлений ещё не опубликован. Нужно выпустить GitHub Release с latest.json.";
+  }
+
+  if (rawMessage.includes("404") && rawMessage.includes("latest.json")) {
+    return "Файл latest.json ещё не опубликован в GitHub Releases.";
+  }
+
+  return rawMessage;
 }
 
 async function initCloud() {

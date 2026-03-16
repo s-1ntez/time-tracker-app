@@ -36,3 +36,21 @@ git push origin v1.0.3
 ```
 
 После этого workflow `Release Tauri App` соберёт релиз и updater-артефакты.
+
+## Что должно получиться
+
+После успешного tag release в GitHub Releases должны появиться:
+
+- desktop assets для macOS и Windows
+- updater artifacts
+- `latest.json`
+
+Кнопка обновления в desktop-приложении работает только после появления:
+
+- `https://github.com/s-1ntez/time-tracker-app/releases/latest/download/latest.json`
+
+Для macOS release workflow собирает:
+
+- `x86_64-apple-darwin`
+
+Это нужно, чтобы обновления были совместимы с вашим x64 macOS installer и macOS 12+.

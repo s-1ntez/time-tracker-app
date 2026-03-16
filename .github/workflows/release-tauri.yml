@@ -14,8 +14,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: ""
+          - platform: macos-15-intel
+            args: "--target x86_64-apple-darwin"
           - platform: windows-latest
             args: "--target x86_64-pc-windows-msvc"
 
