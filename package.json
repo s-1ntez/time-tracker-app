@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "tauri:build:ci": "tauri build --config src-tauri/tauri.build.conf.json",
     "tauri:build:win": "tauri build --target x86_64-pc-windows-msvc",
+    "tauri:build:win:ci": "tauri build --target x86_64-pc-windows-msvc --config src-tauri/tauri.build.conf.json",
     "tauri:ios:init": "tauri ios init",
     "tauri:ios:dev": "tauri ios dev",
     "tauri:ios:build": "tauri ios build"
