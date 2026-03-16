@@ -3,10 +3,10 @@ name: Build macOS App
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
-    paths:
-      - "**"
+
+concurrency:
+  group: macos-build
+  cancel-in-progress: false
 
 jobs:
   build-macos:
