@@ -55,6 +55,14 @@ body {
   margin: 0 auto 16px;
 }
 
+.header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .app-header h1 {
   margin: 0;
   font-size: clamp(1.9rem, 4.2vw, 3rem);
@@ -65,6 +73,18 @@ body {
 .app-header p {
   margin: 8px 0 0;
   color: var(--muted);
+}
+
+.updater-box {
+  min-width: min(100%, 320px);
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.updater-box .hint {
+  margin: 0;
+  text-align: right;
 }
 
 .layout {
@@ -90,7 +110,10 @@ body {
 .manual-panel { grid-column: span 4; }
 .stats-panel { grid-column: span 8; }
 .export-panel { grid-column: span 4; }
-.auth-panel { grid-column: span 12; }
+.auth-panel {
+  display: none;
+  grid-column: span 12;
+}
 
 .panel-head h2 {
   margin: 0 0 10px;
@@ -377,6 +400,15 @@ td {
   .stats-panel,
   .export-panel {
     grid-column: span 12;
+  }
+
+  .updater-box {
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .updater-box .hint {
+    text-align: left;
   }
 }
 

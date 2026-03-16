@@ -20,8 +20,16 @@
   <div class="bg-shape bg-shape-b" aria-hidden="true"></div>
 
   <header class="app-header">
-    <h1>Time Tracker</h1>
-    <p>Проекты, задачи и учёт времени в одном приложении</p>
+    <div class="header-row">
+      <div>
+        <h1>Time Tracker</h1>
+        <p>Проекты, задачи и учёт времени в одном приложении</p>
+      </div>
+      <div id="updater-box" class="updater-box" hidden>
+        <button id="updater-check" type="button" class="ghost">Проверить обновления</button>
+        <p id="updater-status" class="hint">Обновления недоступны.</p>
+      </div>
+    </div>
   </header>
 
   <main class="layout">

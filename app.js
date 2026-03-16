@@ -16,6 +16,10 @@ let currentUser = null;
 let syncing = false;
 let reminderTimeout = null;
 let tauriNotificationPlugin = undefined;
+let updaterPlugin = undefined;
+let processPlugin = undefined;
+let pendingUpdate = null;
+let updaterBusy = false;
 
 const els = {
   projectForm: document.getElementById("project-form"),
@@ -79,14 +83,16 @@ const els = {
   notifyReminderMinutes: document.getElementById("notify-reminder-minutes"),
   notifySave: document.getElementById("notify-save"),
   notifyStatus: document.getElementById("notify-status"),
+  updaterBox: document.getElementById("updater-box"),
+  updaterCheck: document.getElementById("updater-check"),
+  updaterStatus: document.getElementById("updater-status"),
 };
 
 bindEvents();
 renderAll();
 ensureTick();
 registerSW({ immediate: true });
-initCloud();
-initNotifications();
+initUpdater();
 
 function bindEvents() {
   window.addEventListener("online", () => {
@@ -126,6 +132,119 @@ function bindEvents() {
   els.cloudSync.addEventListener("click", onCloudSync);
   els.notifyEnable.addEventListener("click", onEnableNotifications);
   els.notifySave.addEventListener("click", onSaveNotificationSettings);
+  els.updaterCheck.addEventListener("click", onUpdaterAction);
+}
+
+async function initUpdater() {
+  if (!isTauri()) return;
+
+  els.updaterBox.hidden = false;
+  setUpdaterStatus("Проверяю обновления...");
+  await checkForUpdates(false);
+}
+
+async function onUpdaterAction() {
+  if (updaterBusy) return;
+  if (pendingUpdate) {
+    await installPendingUpdate();
+    return;
+  }
+  await checkForUpdates(true);
+}
+
+async function checkForUpdates(fromButton) {
+  if (!isTauri()) return;
+
+  updaterBusy = true;
+  updateUpdaterButton();
+
+  try {
+    const { check } = await getUpdaterPlugin();
+    pendingUpdate = await check();
+
+    if (pendingUpdate) {
+      setUpdaterStatus(`Доступна версия ${pendingUpdate.version}.`);
+    } else {
+      setUpdaterStatus(fromButton ? "Установлена актуальная версия." : "Автообновление включено.");
+    }
+  } catch (error) {
+    pendingUpdate = null;
+    setUpdaterStatus(`Ошибка обновления: ${getErrorMessage(error)}`);
+  } finally {
+    updaterBusy = false;
+    updateUpdaterButton();
+  }
+}
+
+async function installPendingUpdate() {
+  if (!pendingUpdate) return;
+
+  updaterBusy = true;
+  updateUpdaterButton();
+  let downloadedBytes = 0;
+  let totalBytes = 0;
+
+  try {
+    await pendingUpdate.downloadAndInstall((event) => {
+      if (event.event === "Started") {
+        totalBytes = Number(event.data.contentLength || 0);
+        setUpdaterStatus("Скачиваю обновление...");
+      }
+      if (event.event === "Progress") {
+        downloadedBytes += Number(event.data.chunkLength || 0);
+        const sizeLabel = totalBytes
+          ? `${Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))}%`
+          : `${Math.round(downloadedBytes / 1024)} KB`;
+        setUpdaterStatus(`Скачиваю обновление: ${sizeLabel}`);
+      }
+      if (event.event === "Finished") {
+        setUpdaterStatus("Устанавливаю обновление...");
+      }
+    });
+
+    const { relaunch } = await getProcessPlugin();
+    setUpdaterStatus("Обновление установлено. Перезапуск...");
+    await relaunch();
+  } catch (error) {
+    setUpdaterStatus(`Не удалось установить обновление: ${getErrorMessage(error)}`);
+  } finally {
+    pendingUpdate = null;
+    updaterBusy = false;
+    updateUpdaterButton();
+  }
+}
+
+function setUpdaterStatus(message) {
+  els.updaterStatus.textContent = message;
+}
+
+function updateUpdaterButton() {
+  if (updaterBusy) {
+    els.updaterCheck.disabled = true;
+    els.updaterCheck.textContent = "Подождите...";
+    return;
+  }
+
+  els.updaterCheck.disabled = false;
+  els.updaterCheck.textContent = pendingUpdate
+    ? `Установить ${pendingUpdate.version}`
+    : "Проверить обновления";
+}
+
+async function getUpdaterPlugin() {
+  if (updaterPlugin) return updaterPlugin;
+  updaterPlugin = await import("@tauri-apps/plugin-updater");
+  return updaterPlugin;
+}
+
+async function getProcessPlugin() {
+  if (processPlugin) return processPlugin;
+  processPlugin = await import("@tauri-apps/plugin-process");
+  return processPlugin;
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function initCloud() {
