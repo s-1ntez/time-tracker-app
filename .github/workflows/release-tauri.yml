@@ -58,25 +58,13 @@ jobs:
             exit 1
           fi
 
-          NORMALIZED_KEY="$RAW_TAURI_SIGNING_PRIVATE_KEY"
-
-          if [[ "$NORMALIZED_KEY" != untrusted\ comment:* ]]; then
-            DECODED_KEY="$(python3 -c "import base64, os, sys; sys.stdout.write(base64.b64decode(os.environ['RAW_TAURI_SIGNING_PRIVATE_KEY'].strip()).decode('utf-8'))")" || {
-              echo "Invalid updater private key format" >&2
-              exit 1
-            }
-            NORMALIZED_KEY="$DECODED_KEY"
-          fi
-
-          if [[ "$NORMALIZED_KEY" != untrusted\ comment:* ]]; then
+          NORMALIZED_KEY="$(python3 -c "import base64, os, sys; raw=os.environ['RAW_TAURI_SIGNING_PRIVATE_KEY'].strip(); decoded = base64.b64decode(raw).decode('utf-8') if not raw.startswith('untrusted comment:') else raw; sys.exit('Invalid updater private key format') if not decoded.startswith('untrusted comment:') else None; sys.stdout.write(base64.b64encode(decoded.encode('utf-8')).decode('ascii'))")" || {
             echo "Invalid updater private key format" >&2
             exit 1
-          fi
+          }
 
           {
-            echo "TAURI_SIGNING_PRIVATE_KEY<<EOF"
-            printf '%s\n' "$NORMALIZED_KEY"
-            echo "EOF"
+            echo "TAURI_SIGNING_PRIVATE_KEY=$NORMALIZED_KEY"
             echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
