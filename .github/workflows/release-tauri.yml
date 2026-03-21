@@ -61,17 +61,10 @@ jobs:
           NORMALIZED_KEY="$RAW_TAURI_SIGNING_PRIVATE_KEY"
 
           if [[ "$NORMALIZED_KEY" != untrusted\ comment:* ]]; then
-            DECODED_KEY="$(python3 - <<'PY'
-import base64, os, sys
-raw = os.environ["RAW_TAURI_SIGNING_PRIVATE_KEY"].strip()
-try:
-    decoded = base64.b64decode(raw).decode("utf-8")
-except Exception as exc:
-    print(f"Invalid updater private key format: {exc}", file=sys.stderr)
-    sys.exit(1)
-print(decoded, end="")
-PY
-)"
+            DECODED_KEY="$(python3 -c 'import base64, os, sys; raw = os.environ[\"RAW_TAURI_SIGNING_PRIVATE_KEY\"].strip(); \
+try: decoded = base64.b64decode(raw).decode(\"utf-8\"); \
+except Exception as exc: print(f\"Invalid updater private key format: {exc}\", file=sys.stderr); sys.exit(1); \
+print(decoded, end=\"\")')"
             NORMALIZED_KEY="$DECODED_KEY"
           fi
 

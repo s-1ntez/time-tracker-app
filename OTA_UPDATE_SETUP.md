@@ -32,12 +32,12 @@
    - `src-tauri/tauri.conf.json`
 2. Закоммитить изменения
 3. Создать тег вида:
-   - `v1.0.6`
+   - `v1.0.7`
 4. Запушить тег:
 
 ```bash
-git tag v1.0.6
-git push origin v1.0.6
+git tag v1.0.7
+git push origin v1.0.7
 ```
 
 После этого workflow `Release Tauri App` соберёт релиз и updater-артефакты.
